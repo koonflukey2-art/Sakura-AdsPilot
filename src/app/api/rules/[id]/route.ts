@@ -23,11 +23,17 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const parsed = ruleSchema.partial().safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const updated = await prisma.rule.updateMany({
-    where: { id: params.id, organizationId: auth.session.user.organizationId },
+  if (auth.session.user.role === 'EMPLOYEE' && parsed.data.autoApply === true) {
+    return NextResponse.json({ error: 'พนักงานไม่สามารถเปิดยิงจริงอัตโนมัติได้' }, { status: 403 });
+  }
+
+  const current = await prisma.rule.findFirst({ where: { id: params.id, organizationId: auth.session.user.organizationId } });
+  if (!current) return NextResponse.json({ error: 'ไม่พบกฎที่ต้องการ' }, { status: 404 });
+
+  const updated = await prisma.rule.update({
+    where: { id: current.id },
     data: parsed.data
   });
-  if (!updated.count) return NextResponse.json({ error: 'ไม่พบกฎที่ต้องการ' }, { status: 404 });
 
   await createAuditLog({
     organizationId: auth.session.user.organizationId,
@@ -39,7 +45,18 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     details: parsed.data as Record<string, unknown>
   });
 
-  return NextResponse.json({ success: true });
+  if (typeof parsed.data.isEnabled === 'boolean') {
+    await createAuditLog({
+      organizationId: auth.session.user.organizationId,
+      actorId: auth.session.user.id,
+      actorLabel: auth.session.user.email || auth.session.user.id,
+      eventType: parsed.data.isEnabled ? 'RULE_ENABLED' : 'RULE_DISABLED',
+      entityType: 'RULE',
+      entityId: params.id
+    });
+  }
+
+  return NextResponse.json(updated);
 }
 
 export async function DELETE(_: Request, { params }: { params: { id: string } }) {

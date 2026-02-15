@@ -9,5 +9,5 @@ export function canManageUsers(role?: Role) {
 }
 
 export function canManageRules(role?: Role) {
-  return role === 'ADMIN';
+  return role === 'ADMIN' || role === 'EMPLOYEE';
 }

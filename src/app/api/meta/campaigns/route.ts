@@ -12,6 +12,6 @@ export async function GET() {
     const campaigns = await fetchMetaCampaigns(conn.adAccountId, conn.accessToken);
     return NextResponse.json(campaigns.map((c) => ({ id: c.id, name: c.name, status: c.status })));
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'โหลดแคมเปญไม่สำเร็จ' }, { status: 400 });
+    return NextResponse.json({ error: 'กรุณาตั้งค่า Meta API ก่อน' }, { status: 400 });
   }
 }

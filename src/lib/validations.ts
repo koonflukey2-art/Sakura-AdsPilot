@@ -24,8 +24,8 @@ export const registerSchema = z
   });
 
 export const metaConnectionSchema = z.object({
-  adAccountId: requiredText('รหัสบัญชีโฆษณา Meta', 3),
-  accessToken: z.string().optional(),
+  adAccountId: z.string().trim().optional().default(''),
+  accessToken: z.string().optional().default(''),
   tokenExpiresAt: z.string().optional(),
   status: z.enum(['CONNECTED', 'DISCONNECTED', 'ERROR']).default('CONNECTED')
 });

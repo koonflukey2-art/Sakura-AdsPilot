@@ -15,6 +15,6 @@ export async function GET(req: Request) {
     const adsets = await fetchMetaAdsets(conn.adAccountId, conn.accessToken, campaignId);
     return NextResponse.json(adsets.map((a) => ({ id: a.id, name: a.name, status: a.status })));
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'โหลดแอดเซ็ตไม่สำเร็จ' }, { status: 400 });
+    return NextResponse.json({ error: 'กรุณาตั้งค่า Meta API ก่อน' }, { status: 400 });
   }
 }
