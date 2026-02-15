@@ -1,25 +1,33 @@
 import { PrismaClient, Role, RuleType } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { DEFAULT_ORGANIZATION_NAME } from '../src/lib/constants';
 
 const prisma = new PrismaClient();
 
 async function main() {
+  const organization = await prisma.organization.upsert({
+    where: { name: DEFAULT_ORGANIZATION_NAME },
+    update: {},
+    create: { name: DEFAULT_ORGANIZATION_NAME }
+  });
+
   const passwordHash = await bcrypt.hash('Admin@12345', 12);
   const admin = await prisma.user.upsert({
     where: { email: 'admin@company.local' },
-    update: {},
+    update: { organizationId: organization.id, role: Role.ADMIN, isActive: true },
     create: {
+      organizationId: organization.id,
       email: 'admin@company.local',
-      name: 'System Admin',
+      name: 'ผู้ดูแลระบบ',
       role: Role.ADMIN,
       passwordHash
     }
   });
 
   await prisma.notificationSetting.upsert({
-    where: { id: 'default-notification-settings' },
+    where: { organizationId: organization.id },
     update: {},
-    create: { id: 'default-notification-settings' }
+    create: { organizationId: organization.id }
   });
 
   const today = new Date();
@@ -35,6 +43,7 @@ async function main() {
 
     await prisma.metric.create({
       data: {
+        organizationId: organization.id,
         date,
         campaignId: 'cmp_001',
         adSetId: 'adset_001',
@@ -50,20 +59,20 @@ async function main() {
 
   const rules = [
     {
-      name: 'CPA Ceiling Budget Guard',
-      description: 'If CPA is too high and conversions are sufficient, reduce budget.',
+      name: 'ควบคุมงบตาม CPA',
+      description: 'หาก CPA สูงเกินเพดานและคอนเวอร์ชันถึงขั้นต่ำ ให้ลดงบ',
       type: RuleType.CPA_BUDGET_REDUCTION,
       configJson: { cpaCeiling: 50, minConversions: 20, reduceByPercent: 15 }
     },
     {
-      name: 'ROAS Sliding Stop',
-      description: 'If ROAS stays low for consecutive days and trend worsens, pause ad set.',
+      name: 'หยุดแอดเซ็ตเมื่อ ROAS ต่ำ',
+      description: 'หาก ROAS ต่ำต่อเนื่องและมีแนวโน้มแย่ลง ให้หยุดแอดเซ็ต',
       type: RuleType.ROAS_PAUSE_ADSET,
       configJson: { roasTarget: 1.8, consecutiveDays: 3 }
     },
     {
-      name: 'Creative Fatigue Alert',
-      description: 'Alert when CTR drops while frequency remains high.',
+      name: 'แจ้งเตือนครีเอทีฟล้า',
+      description: 'แจ้งเตือนเมื่อ CTR ลดลงและ Frequency สูง',
       type: RuleType.CTR_FATIGUE_ALERT,
       configJson: { ctrDropPercent: 20, minFrequency: 2.4 }
     }
@@ -72,8 +81,8 @@ async function main() {
   for (const rule of rules) {
     await prisma.rule.upsert({
       where: { id: `${rule.type}_seed` },
-      update: { ...rule, createdById: admin.id },
-      create: { id: `${rule.type}_seed`, ...rule, createdById: admin.id }
+      update: { ...rule, createdById: admin.id, organizationId: organization.id },
+      create: { id: `${rule.type}_seed`, ...rule, createdById: admin.id, organizationId: organization.id }
     });
   }
 

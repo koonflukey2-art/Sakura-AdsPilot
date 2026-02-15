@@ -2,7 +2,6 @@ import { PrismaAdapter } from '@auth/prisma-adapter';
 import bcrypt from 'bcryptjs';
 import type { NextAuthOptions } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
-import GoogleProvider from 'next-auth/providers/google';
 import { prisma } from './prisma';
 import { loginSchema } from './validations';
 import type { Role } from '@prisma/client';
@@ -25,7 +24,7 @@ function trackFail(email: string) {
   attempts.set(email, { count: (prev?.count || 0) + 1, ts: Date.now() });
 }
 
-const DEFAULT_ROLE: Role = 'VIEWER';
+const DEFAULT_ROLE: Role = 'EMPLOYEE';
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -43,10 +42,10 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findUnique({
           where: { email: parsed.data.email },
-          select: { id: true, email: true, name: true, role: true, passwordHash: true }
+          select: { id: true, email: true, name: true, role: true, passwordHash: true, organizationId: true, isActive: true }
         });
 
-        if (!user) {
+        if (!user || !user.isActive) {
           trackFail(parsed.data.email);
           return null;
         }
@@ -57,44 +56,33 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        // ✅ คืน role ได้ตอน credentials login (ดี)
-        return { id: user.id, email: user.email, name: user.name, role: user.role } as any;
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          organizationId: user.organizationId,
+          isActive: user.isActive
+        };
       }
-    }),
-
-    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
-      ? [
-          GoogleProvider({
-            clientId: process.env.GOOGLE_CLIENT_ID,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET
-          })
-        ]
-      : [])
+    })
   ],
 
   callbacks: {
     async jwt({ token, user }) {
-      // ตอน sign-in จะมี user เข้ามา (credentials หรือ oauth)
       if (user?.id) {
-        token.id = user.id as string;
+        token.id = user.id;
+      }
 
-        // ❗ อย่าดึง role จาก user โดยตรง เพราะ AdapterUser (Google) ไม่มี role
-        // ✅ ดึงจาก DB เป็น source of truth
+      if (token.id) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id },
-          select: { role: true }
+          select: { role: true, organizationId: true, isActive: true }
         });
 
-        token.role = (dbUser?.role ?? DEFAULT_ROLE) as Role;
-      } else {
-        // กรณี refresh token/session: ถ้า token มี id แต่ role หาย ให้เติมจาก DB
-        if (token?.id && !token.role) {
-          const dbUser = await prisma.user.findUnique({
-            where: { id: token.id as string },
-            select: { role: true }
-          });
-          token.role = (dbUser?.role ?? DEFAULT_ROLE) as Role;
-        }
+        token.role = dbUser?.role ?? DEFAULT_ROLE;
+        token.organizationId = dbUser?.organizationId;
+        token.isActive = dbUser?.isActive ?? false;
       }
 
       return token;
@@ -102,8 +90,10 @@ export const authOptions: NextAuthOptions = {
 
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = (token.id ?? '') as string;
-        session.user.role = (token.role ?? DEFAULT_ROLE) as Role;
+        session.user.id = token.id ?? '';
+        session.user.role = token.role ?? DEFAULT_ROLE;
+        session.user.organizationId = token.organizationId ?? '';
+        session.user.isActive = token.isActive ?? false;
       }
       return session;
     }
