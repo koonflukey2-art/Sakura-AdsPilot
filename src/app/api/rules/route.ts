@@ -25,6 +25,10 @@ export async function POST(req: Request) {
   const parsed = ruleSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
+  if (auth.session.user.role === 'EMPLOYEE' && parsed.data.autoApply) {
+    return NextResponse.json({ error: 'พนักงานไม่สามารถเปิดยิงจริงอัตโนมัติได้' }, { status: 403 });
+  }
+
   const rule = await prisma.rule.create({
     data: {
       ...parsed.data,
@@ -41,7 +45,7 @@ export async function POST(req: Request) {
     eventType: 'RULE_CREATED',
     entityType: 'RULE',
     entityId: rule.id,
-    details: { name: rule.name, type: rule.type }
+    details: { name: rule.name, type: rule.type, autoApply: rule.autoApply }
   });
 
   return NextResponse.json(rule);

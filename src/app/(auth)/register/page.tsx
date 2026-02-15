@@ -28,7 +28,7 @@ export default function RegisterPage() {
       return;
     }
 
-    toast({ type: 'success', title: 'สมัครสมาชิกสำเร็จ', description: 'กรุณาเข้าสู่ระบบด้วยอีเมลและรหัสผ่านของคุณ' });
+    toast({ type: 'success', title: 'สมัครสมาชิกสำเร็จ กรุณาเข้าสู่ระบบ' });
     setForm({ name: '', email: '', password: '', confirmPassword: '' });
     router.push('/login?registered=1');
   };

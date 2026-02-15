@@ -11,18 +11,26 @@
 - Audit Log ครอบคลุมการแก้ไขข้อมูลหลัก
 - Worker มี lock กันรันซ้ำ
 
-## เริ่มใช้งาน (Local)
+## เริ่มใช้งานในองค์กร (Local)
 ```bash
 cp .env.example .env
 npm install
-npm run db:migrate
+npm run db:migrate:deploy
 npm run db:seed
 npm run dev
 ```
 
 บัญชีเริ่มต้น: `admin@company.local / Admin@12345`
 
-## Docker
+## ลำดับใช้งาน MVP
+1. สมัครสมาชิกพนักงานที่ `/register`
+2. เข้าสู่ระบบที่ `/login`
+3. ไปหน้า `/settings` เพื่อบันทึก Meta API และทดสอบการเชื่อมต่อ
+4. ไปหน้า `/rules` เพื่อเลือกขอบเขตแคมเปญ/แอดเซ็ต แล้วสร้างกฎ
+5. (แอดมิน) สั่งรันกฎตอนนี้จาก API `/api/worker/run`
+6. ตรวจสอบผลใน `/logs` และ KPI ที่ `/dashboard`
+
+## Docker Compose
 ```bash
 docker compose up --build -d
 ```

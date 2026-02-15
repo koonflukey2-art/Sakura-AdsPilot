@@ -9,7 +9,6 @@ import { createAuditLog } from '@/lib/audit';
 export async function GET() {
   const auth = await requireSession();
   if (auth.error) return auth.error;
-  if (auth.session.user.role !== 'ADMIN') return forbidden();
 
   const setting = await prisma.notificationSetting.findUnique({ where: { organizationId: auth.session.user.organizationId } });
   return NextResponse.json({
@@ -21,8 +20,8 @@ export async function GET() {
     notifyEmailTo: setting?.notifyEmailTo ?? '',
     lineEnabled: setting?.lineEnabled ?? false,
     lineMode: setting?.lineMode ?? 'NOTIFY',
-    smtpPasswordMasked: maskSecret(setting?.smtpPassEnc ? 'encrypted' : ''),
-    lineTokenMasked: maskSecret(setting?.lineTokenEnc ? 'encrypted' : '')
+    smtpPasswordMasked: setting?.smtpPassEnc ? maskSecret('smtp0000') : '',
+    lineTokenMasked: setting?.lineTokenEnc ? maskSecret('line0000') : ''
   });
 }
 
@@ -67,7 +66,7 @@ export async function PUT(req: Request) {
     organizationId: auth.session.user.organizationId,
     actorId: auth.session.user.id,
     actorLabel: auth.session.user.email || auth.session.user.id,
-    eventType: 'SETTINGS_UPDATED',
+    eventType: 'SETTINGS_NOTIFICATIONS_UPDATED',
     entityType: 'NOTIFICATION_SETTING',
     entityId: auth.session.user.organizationId
   });
