@@ -9,8 +9,7 @@ datasource db {
 
 enum Role {
   ADMIN
-  MARKETER
-  VIEWER
+  EMPLOYEE
 }
 
 enum RuleType {
@@ -32,68 +31,99 @@ enum ActionStatus {
   SKIPPED
 }
 
+model Organization {
+  id                  String                @id @default(cuid())
+  name                String                @unique
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  users               User[]
+  metrics             Metric[]
+  rules               Rule[]
+  actions             Action[]
+  auditLogs           AuditLog[]
+  notificationSetting NotificationSetting?
+  notificationLogs    NotificationLog[]
+  metaConnections     MetaConnection[]
+  workerLocks         WorkerLock[]
+}
+
 model User {
-  id             String      @id @default(cuid())
+  id             String       @id @default(cuid())
+  organizationId String
   name           String?
-  email          String      @unique
+  email          String       @unique
   passwordHash   String
-  role           Role        @default(VIEWER)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  role           Role         @default(EMPLOYEE)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   auditLogs      AuditLog[]
-  rulesCreated   Rule[]      @relation("RuleCreatedBy")
+  rulesCreated   Rule[]       @relation("RuleCreatedBy")
+
+  @@index([organizationId, role])
+  @@index([organizationId, isActive])
 }
 
 model MetaConnection {
-  id              String   @id @default(cuid())
+  id              String       @id @default(cuid())
+  organizationId  String
   userId          String
   metaAdAccountId String
   accessTokenEnc  String
   tokenExpiresAt  DateTime?
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  @@index([metaAdAccountId])
+  @@index([organizationId, metaAdAccountId])
 }
 
 model Metric {
-  id            String   @id @default(cuid())
-  date          DateTime
-  platform      String   @default("META")
-  campaignId    String?
-  adSetId       String?
-  spend         Decimal  @db.Decimal(10, 2)
-  conversions   Int
-  cpa           Decimal  @db.Decimal(10, 2)
-  roas          Decimal  @db.Decimal(10, 2)
-  ctr           Decimal  @db.Decimal(5, 2)
-  frequency     Decimal  @db.Decimal(5, 2)
-  createdAt     DateTime @default(now())
+  id             String       @id @default(cuid())
+  organizationId String
+  date           DateTime
+  platform       String       @default("META")
+  campaignId     String?
+  adSetId        String?
+  spend          Decimal      @db.Decimal(10, 2)
+  conversions    Int
+  cpa            Decimal      @db.Decimal(10, 2)
+  roas           Decimal      @db.Decimal(10, 2)
+  ctr            Decimal      @db.Decimal(5, 2)
+  frequency      Decimal      @db.Decimal(5, 2)
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  @@index([date, platform])
-  @@index([campaignId, adSetId])
+  @@index([organizationId, date, platform])
+  @@index([organizationId, campaignId, adSetId])
 }
 
 model Rule {
-  id                     String    @id @default(cuid())
-  name                   String
-  description            String
-  type                   RuleType
-  isEnabled              Boolean   @default(true)
-  autoApply              Boolean   @default(false)
-  configJson             Json
-  maxBudgetChangePerDay  Int       @default(20)
-  cooldownHours          Int       @default(24)
-  createdById            String
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
-  createdBy              User      @relation("RuleCreatedBy", fields: [createdById], references: [id])
-  actions                Action[]
+  id                    String       @id @default(cuid())
+  organizationId        String
+  name                  String
+  description           String
+  type                  RuleType
+  isEnabled             Boolean      @default(true)
+  autoApply             Boolean      @default(false)
+  configJson            Json
+  maxBudgetChangePerDay Int          @default(20)
+  cooldownHours         Int          @default(24)
+  createdById           String
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy             User         @relation("RuleCreatedBy", fields: [createdById], references: [id])
+  actions               Action[]
+
+  @@index([organizationId, isEnabled])
 }
 
 model Action {
   id              String       @id @default(cuid())
+  organizationId  String
   ruleId          String
   actionType      ActionType
   targetRef       String
@@ -106,46 +136,70 @@ model Action {
   updatedAt       DateTime     @updatedAt
   executedAt      DateTime?
   resultMessage   String?
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   rule            Rule         @relation(fields: [ruleId], references: [id])
+
+  @@index([organizationId, createdAt])
 }
 
 model AuditLog {
-  id          String   @id @default(cuid())
-  actorType   String
-  actorId     String?
-  actorLabel  String
-  eventType   String
-  entityType  String
-  entityId    String
-  detailsJson Json
-  createdAt   DateTime @default(now())
-  user        User?    @relation(fields: [actorId], references: [id])
+  id             String       @id @default(cuid())
+  organizationId String
+  actorType      String
+  actorId        String?
+  actorLabel     String
+  eventType      String
+  entityType     String
+  entityId       String
+  detailsJson    Json
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User?        @relation(fields: [actorId], references: [id])
 
-  @@index([createdAt, eventType])
+  @@index([organizationId, createdAt, eventType])
 }
 
 model NotificationSetting {
-  id               String   @id @default(cuid())
-  emailEnabled     Boolean  @default(false)
-  smtpHost         String?
-  smtpPort         Int?
-  smtpUser         String?
-  smtpPassEnc      String?
-  smtpFrom         String?
-  notifyEmailTo    String?
-  lineEnabled      Boolean  @default(false)
-  lineMode         String?  @default("NOTIFY")
-  lineTokenEnc     String?
-  updatedAt        DateTime @updatedAt
-  createdAt        DateTime @default(now())
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  emailEnabled   Boolean      @default(false)
+  smtpHost       String?
+  smtpPort       Int?
+  smtpUser       String?
+  smtpPassEnc    String?
+  smtpFrom       String?
+  notifyEmailTo  String?
+  lineEnabled    Boolean      @default(false)
+  lineMode       String?      @default("NOTIFY")
+  lineTokenEnc   String?
+  updatedAt      DateTime     @updatedAt
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
 model NotificationLog {
-  id          String   @id @default(cuid())
-  channel     String
-  recipient   String
-  payloadJson Json
-  status      String
-  error       String?
-  createdAt   DateTime @default(now())
+  id             String       @id @default(cuid())
+  organizationId String
+  channel        String
+  recipient      String
+  payloadJson    Json
+  status         String
+  error          String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+}
+
+model WorkerLock {
+  id             String       @id @default(cuid())
+  organizationId String
+  lockKey        String
+  lockedUntil    DateTime
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, lockKey])
+  @@index([organizationId, lockedUntil])
 }
