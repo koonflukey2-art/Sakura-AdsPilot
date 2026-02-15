@@ -52,6 +52,43 @@ export const ruleSchema = z.object({
   maxBudgetChangePerDay: z.number().min(1, 'การปรับงบต่อวันต้องไม่น้อยกว่า 1%').max(50, 'การปรับงบต่อวันต้องไม่เกิน 50%'),
   cooldownHours: z.number().min(1, 'คูลดาวน์ต้องไม่น้อยกว่า 1 ชั่วโมง').max(168, 'คูลดาวน์ต้องไม่เกิน 168 ชั่วโมง'),
   configJson: z.record(z.any())
+}).superRefine((data, ctx) => {
+  const configSchemaByType = {
+    CPA_BUDGET_REDUCTION: z.object({
+      cpaCeiling: z.number({ required_error: 'กรุณากรอกเพดาน CPA' }).min(0.01, 'เพดาน CPA ต้องมากกว่า 0'),
+      budgetReductionPercent: z.number({ required_error: 'กรุณากรอกลดงบ (%)' }).min(1, 'ลดงบต้องไม่น้อยกว่า 1%').max(100, 'ลดงบต้องไม่เกิน 100%'),
+      minConversions: z.number({ required_error: 'กรุณากรอกคอนเวอร์ชันขั้นต่ำ' }).int('คอนเวอร์ชันขั้นต่ำต้องเป็นจำนวนเต็ม').min(1, 'คอนเวอร์ชันขั้นต่ำต้องไม่น้อยกว่า 1')
+    }),
+    ROAS_PAUSE_ADSET: z.object({
+      roasFloor: z.number({ required_error: 'กรุณากรอก ROAS ต่ำสุด' }).min(0.01, 'ROAS ต่ำสุดต้องมากกว่า 0'),
+      minSpend: z.number({ required_error: 'กรุณากรอกงบขั้นต่ำ' }).min(0.01, 'งบขั้นต่ำต้องมากกว่า 0')
+    }),
+    CTR_FATIGUE_ALERT: z.object({
+      ctrDropPercent: z.number({ required_error: 'กรุณากรอกเปอร์เซ็นต์ CTR ลดลง' }).min(1, 'เปอร์เซ็นต์ CTR ลดลงต้องไม่น้อยกว่า 1%').max(100, 'เปอร์เซ็นต์ CTR ลดลงต้องไม่เกิน 100%'),
+      minFrequency: z.number({ required_error: 'กรุณากรอก Frequency ขั้นต่ำ' }).min(1, 'Frequency ขั้นต่ำต้องไม่น้อยกว่า 1')
+    })
+  } as const;
+
+  const hasType = Boolean(data.type);
+  const hasConfig = typeof data.configJson === 'object' && data.configJson !== null;
+
+  if (hasType && !hasConfig) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['configJson'], message: 'กรุณากรอกค่าการตั้งค่ากฎให้ครบถ้วน' });
+    return;
+  }
+
+  if (!hasType || !hasConfig) return;
+
+  const parsedConfig = configSchemaByType[data.type].safeParse(data.configJson);
+  if (!parsedConfig.success) {
+    for (const issue of parsedConfig.error.issues) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: issue.message,
+        path: ['configJson', ...issue.path]
+      });
+    }
+  }
 });
 
 export const userUpdateSchema = z.object({

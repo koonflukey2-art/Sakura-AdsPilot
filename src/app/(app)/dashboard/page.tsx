@@ -37,8 +37,19 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     ['Frequency เฉลี่ย', `${(summary.frequency / c).toFixed(2)}`]
   ];
 
+  const welcomeName = session?.user.name || session?.user.email || 'ผู้ใช้งาน';
+
   return (
     <div className="space-y-6">
+      {session?.user && (
+        <Card className="flex items-center gap-3 border border-primary/20 bg-gradient-to-r from-primary/20 to-transparent p-5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/30 text-lg">✨</div>
+          <div>
+            <p className="text-sm text-foreground/70">Sakura AdsPilot พร้อมช่วยคุณดูแลแคมเปญ</p>
+            <p className="text-xl font-semibold">ยินดีต้อนรับ, {welcomeName}</p>
+          </div>
+        </Card>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-semibold">แดชบอร์ด KPI</h2>
