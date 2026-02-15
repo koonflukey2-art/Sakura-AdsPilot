@@ -10,12 +10,8 @@ export async function GET() {
   try {
     const conn = await getMetaConnectionOrThrow(auth.session.user.organizationId);
     const campaigns = await fetchMetaCampaigns(conn.adAccountId, conn.accessToken);
-    return NextResponse.json({
-      success: true,
-      message: 'ทดสอบการเชื่อมต่อสำเร็จ',
-      account: { id: conn.adAccountId, campaignCount: campaigns.length }
-    });
+    return NextResponse.json(campaigns.map((c) => ({ id: c.id, name: c.name, status: c.status })));
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'ทดสอบไม่สำเร็จ' }, { status: 400 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'โหลดแคมเปญไม่สำเร็จ' }, { status: 400 });
   }
 }

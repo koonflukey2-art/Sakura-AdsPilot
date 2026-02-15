@@ -6,26 +6,36 @@ import { DEFAULT_ORGANIZATION_NAME } from '../src/lib/constants';
 
 const LOCK_KEY = 'WORKER_RULE_RUN';
 
-async function run() {
-  const organization = await prisma.organization.findUnique({ where: { name: DEFAULT_ORGANIZATION_NAME } });
-  if (!organization) {
-    console.log('ไม่พบองค์กรหลัก ข้ามการทำงาน worker');
-    return;
-  }
-
+async function acquireLock(organizationId: string) {
   const now = new Date();
   const lockedUntil = new Date(now.getTime() + 5 * 60 * 1000);
-  const existing = await prisma.workerLock.findUnique({ where: { organizationId_lockKey: { organizationId: organization.id, lockKey: LOCK_KEY } } });
-  if (existing && existing.lockedUntil > now) {
+
+  const updated = await prisma.workerLock.updateMany({
+    where: {
+      organizationId,
+      lockKey: LOCK_KEY,
+      OR: [{ lockedUntil: { lte: now } }]
+    },
+    data: { lockedUntil }
+  });
+
+  if (!updated.count) {
+    await prisma.workerLock.create({ data: { organizationId, lockKey: LOCK_KEY, lockedUntil } }).catch(() => undefined);
+  }
+
+  const lock = await prisma.workerLock.findUnique({ where: { organizationId_lockKey: { organizationId, lockKey: LOCK_KEY } } });
+  return Boolean(lock && lock.lockedUntil > now && lock.lockedUntil <= lockedUntil);
+}
+
+async function run() {
+  const organization = await prisma.organization.findUnique({ where: { name: DEFAULT_ORGANIZATION_NAME } });
+  if (!organization) return;
+
+  const gotLock = await acquireLock(organization.id);
+  if (!gotLock) {
     console.log('มี worker อื่นกำลังทำงานอยู่');
     return;
   }
-
-  await prisma.workerLock.upsert({
-    where: { organizationId_lockKey: { organizationId: organization.id, lockKey: LOCK_KEY } },
-    update: { lockedUntil },
-    create: { organizationId: organization.id, lockKey: LOCK_KEY, lockedUntil }
-  });
 
   const actions = await evaluateRules(organization.id);
   for (const action of actions) {
@@ -39,7 +49,7 @@ async function run() {
       eventType: 'ACTION_EXECUTED',
       entityType: 'ACTION',
       entityId: action.id,
-      details: { message }
+      details: { message, status: action.status }
     });
   }
 

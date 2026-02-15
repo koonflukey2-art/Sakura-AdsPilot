@@ -24,10 +24,10 @@ export const registerSchema = z
   });
 
 export const metaConnectionSchema = z.object({
-  metaAdAccountId: requiredText('รหัสบัญชีโฆษณา Meta', 3),
+  adAccountId: requiredText('รหัสบัญชีโฆษณา Meta', 3),
   accessToken: z.string().optional(),
   tokenExpiresAt: z.string().optional(),
-  isActive: z.boolean().default(true)
+  status: z.enum(['CONNECTED', 'DISCONNECTED', 'ERROR']).default('CONNECTED')
 });
 
 export const notificationsSchema = z.object({
@@ -51,12 +51,15 @@ export const ruleSchema = z.object({
   isEnabled: z.boolean().optional(),
   maxBudgetChangePerDay: z.number().min(1, 'การปรับงบต่อวันต้องไม่น้อยกว่า 1%').max(50, 'การปรับงบต่อวันต้องไม่เกิน 50%'),
   cooldownHours: z.number().min(1, 'คูลดาวน์ต้องไม่น้อยกว่า 1 ชั่วโมง').max(168, 'คูลดาวน์ต้องไม่เกิน 168 ชั่วโมง'),
-  configJson: z.record(z.any())
+  configJson: z.record(z.any()),
+  scopeType: z.enum(['ACCOUNT', 'CAMPAIGN', 'ADSET']).default('ACCOUNT'),
+  scopeIds: z.array(z.string().min(1, 'รหัสเป้าหมายไม่ถูกต้อง')).default([]),
+  applyToAll: z.boolean().default(true)
 }).superRefine((data, ctx) => {
   const configSchemaByType = {
     CPA_BUDGET_REDUCTION: z.object({
       cpaCeiling: z.number({ required_error: 'กรุณากรอกเพดาน CPA' }).min(0.01, 'เพดาน CPA ต้องมากกว่า 0'),
-      budgetReductionPercent: z.number({ required_error: 'กรุณากรอกลดงบ (%)' }).min(1, 'ลดงบต้องไม่น้อยกว่า 1%').max(100, 'ลดงบต้องไม่เกิน 100%'),
+      reducePercent: z.number({ required_error: 'กรุณากรอกลดงบ (%)' }).min(1, 'ลดงบต้องไม่น้อยกว่า 1%').max(100, 'ลดงบต้องไม่เกิน 100%'),
       minConversions: z.number({ required_error: 'กรุณากรอกคอนเวอร์ชันขั้นต่ำ' }).int('คอนเวอร์ชันขั้นต่ำต้องเป็นจำนวนเต็ม').min(1, 'คอนเวอร์ชันขั้นต่ำต้องไม่น้อยกว่า 1')
     }),
     ROAS_PAUSE_ADSET: z.object({
@@ -80,6 +83,15 @@ export const ruleSchema = z.object({
   if (!hasType || !hasConfig) return;
 
   const parsedConfig = configSchemaByType[data.type].safeParse(data.configJson);
+
+
+  if ((data.scopeType === 'CAMPAIGN' || data.scopeType === 'ADSET') && !data.applyToAll && data.scopeIds.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['scopeIds'],
+      message: 'กรุณาเลือกเป้าหมายอย่างน้อย 1 รายการ'
+    });
+  }
   if (!parsedConfig.success) {
     for (const issue of parsedConfig.error.issues) {
       ctx.addIssue({
