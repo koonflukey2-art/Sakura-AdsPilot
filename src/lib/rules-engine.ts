@@ -1,42 +1,128 @@
-import { ActionType, Prisma, RuleType } from '@prisma/client';
+import { ActionStatus, ActionType, RuleScopeType, RuleType } from '@prisma/client';
 import { prisma } from './prisma';
+import { createAuditLog } from './audit';
+import { fetchMetaAdsets, fetchMetaCampaigns, pauseAdset, updateAdsetDailyBudget } from './meta-api';
+import { getMetaConnectionOrThrow } from './meta-connection';
+
+function hourKey(date: Date) {
+  return date.toISOString().slice(0, 13);
+}
+
+async function resolveAdsetTargets(rule: { scopeType: RuleScopeType; scopeIds: string[]; applyToAll: boolean }, adAccountId: string, token: string) {
+  if (rule.scopeType === 'ACCOUNT') {
+    const all = await fetchMetaAdsets(adAccountId, token);
+    return all.map((a) => a.id);
+  }
+
+  if (rule.scopeType === 'CAMPAIGN') {
+    const campaignIds = rule.applyToAll ? (await fetchMetaCampaigns(adAccountId, token)).map((c) => c.id) : rule.scopeIds;
+    const byCampaign = await Promise.all(campaignIds.map((id) => fetchMetaAdsets(adAccountId, token, id)));
+    return [...new Set(byCampaign.flat().map((a) => a.id))];
+  }
+
+  if (rule.applyToAll) {
+    const all = await fetchMetaAdsets(adAccountId, token);
+    return all.map((a) => a.id);
+  }
+
+  return rule.scopeIds;
+}
 
 export async function evaluateRules(organizationId: string, runAt = new Date()) {
   const rules = await prisma.rule.findMany({ where: { organizationId, isEnabled: true } });
-  const latest = await prisma.metric.findFirst({ where: { organizationId }, orderBy: { date: 'desc' } });
-  if (!latest) return [];
+  if (!rules.length) return [];
 
-  const actions: Prisma.ActionCreateManyInput[] = [];
+  const conn = await getMetaConnectionOrThrow(organizationId);
+  const createdActionIds: string[] = [];
 
   for (const rule of rules) {
-    const key = `${organizationId}:${rule.id}:${runAt.toISOString().slice(0, 13)}:${latest.adSetId || 'global'}`;
-    const exists = await prisma.action.findUnique({ where: { idempotencyKey: key } });
-    if (exists) continue;
-
     const cfg = rule.configJson as Record<string, number>;
-    if (rule.type === RuleType.CPA_BUDGET_REDUCTION && Number(latest.cpa) > Number(cfg.cpaCeiling) && latest.conversions >= Number(cfg.minConversions)) {
-      actions.push({ organizationId, ruleId: rule.id, actionType: ActionType.REDUCE_BUDGET, targetRef: latest.adSetId || 'adset_001', summary: `ลดงบ ${cfg.reduceByPercent}%`, kpiSnapshotJson: latest, idempotencyKey: key, status: 'SUCCESS', executedAt: runAt });
-    }
+    const targetAdsets = await resolveAdsetTargets(rule, conn.adAccountId, conn.accessToken);
 
-    if (rule.type === RuleType.ROAS_PAUSE_ADSET) {
-      const days = await prisma.metric.findMany({ where: { organizationId, date: { gte: new Date(Date.now() - Number(cfg.consecutiveDays || 0) * 86400000) } }, orderBy: { date: 'desc' }, take: Number(cfg.consecutiveDays || 0) });
-      const worsening = days.length >= Number(cfg.consecutiveDays || 0) && Number(days[0].roas) < Number(days.at(-1)?.roas ?? 999);
-      if (days.length > 0 && days.every((d) => Number(d.roas) < Number(cfg.roasTarget)) && worsening) {
-        actions.push({ organizationId, ruleId: rule.id, actionType: ActionType.PAUSE_ADSET, targetRef: latest.adSetId || 'adset_001', summary: 'หยุดแอดเซ็ตจาก ROAS ต่ำต่อเนื่อง', kpiSnapshotJson: days, idempotencyKey: key, status: 'SUCCESS', executedAt: runAt });
+    for (const adsetId of targetAdsets) {
+      const metric = await prisma.metric.findFirst({ where: { organizationId, adSetId: adsetId }, orderBy: { date: 'desc' } });
+      if (!metric) continue;
+
+      const idempotencyKey = `${organizationId}:${rule.id}:${adsetId}:${hourKey(runAt)}`;
+      const exists = await prisma.action.findUnique({ where: { idempotencyKey } });
+      if (exists) continue;
+
+      let actionType: ActionType | null = null;
+      let summary = '';
+      if (rule.type === RuleType.CPA_BUDGET_REDUCTION && Number(metric.cpa) > Number(cfg.cpaCeiling) && metric.conversions >= Number(cfg.minConversions)) {
+        actionType = ActionType.REDUCE_BUDGET;
+        summary = `ลดงบ ${cfg.reducePercent}% จาก CPA ${Number(metric.cpa).toFixed(2)}`;
       }
-    }
+      if (rule.type === RuleType.ROAS_PAUSE_ADSET && Number(metric.roas) < Number(cfg.roasFloor) && Number(metric.spend) >= Number(cfg.minSpend)) {
+        actionType = ActionType.PAUSE_ADSET;
+        summary = `หยุดแอดเซ็ตเมื่อ ROAS ต่ำกว่า ${cfg.roasFloor}`;
+      }
+      if (rule.type === RuleType.CTR_FATIGUE_ALERT && Number(metric.ctr) > 0 && Number(metric.frequency) >= Number(cfg.minFrequency)) {
+        actionType = ActionType.NOTIFY_ONLY;
+        summary = `แจ้งเตือน CTR fatigue ที่ adset ${adsetId}`;
+      }
+      if (!actionType) continue;
 
-    if (rule.type === RuleType.CTR_FATIGUE_ALERT) {
-      const prev = await prisma.metric.findMany({ where: { organizationId }, orderBy: { date: 'desc' }, take: 2 });
-      if (prev.length === 2) {
-        const drop = ((Number(prev[1].ctr) - Number(prev[0].ctr)) / Number(prev[1].ctr)) * 100;
-        if (drop >= Number(cfg.ctrDropPercent) && Number(prev[0].frequency) >= Number(cfg.minFrequency)) {
-          actions.push({ organizationId, ruleId: rule.id, actionType: ActionType.NOTIFY_ONLY, targetRef: latest.adSetId || 'adset_001', summary: 'แจ้งเตือนครีเอทีฟล้า', kpiSnapshotJson: prev, idempotencyKey: key, status: 'SUCCESS', executedAt: runAt });
+      const action = await prisma.action.create({
+        data: {
+          organizationId,
+          ruleId: rule.id,
+          actionType,
+          targetRef: adsetId,
+          summary,
+          kpiSnapshotJson: metric,
+          idempotencyKey,
+          status: ActionStatus.PENDING,
+          executedAt: runAt
         }
+      });
+
+      let status: ActionStatus = ActionStatus.SUCCESS;
+      let resultMessage = 'บันทึกการดำเนินการแล้ว';
+      try {
+        if (rule.autoApply && actionType === ActionType.REDUCE_BUDGET) {
+          const currentBudgetMinor = Math.max(100, Math.round(Number(metric.spend) * 100));
+          const reducePct = Math.min(Number(cfg.reducePercent), rule.maxBudgetChangePerDay);
+          const nextBudget = currentBudgetMinor * (1 - reducePct / 100);
+          await updateAdsetDailyBudget(adsetId, conn.accessToken, nextBudget);
+          resultMessage = `ปรับงบลง ${reducePct}% สำเร็จ`;
+        } else if (rule.autoApply && actionType === ActionType.PAUSE_ADSET) {
+          await pauseAdset(adsetId, conn.accessToken);
+          resultMessage = 'สั่งหยุดแอดเซ็ตสำเร็จ';
+        } else if (!rule.autoApply && actionType !== ActionType.NOTIFY_ONLY) {
+          status = ActionStatus.SKIPPED;
+          resultMessage = 'รอการอนุมัติ เนื่องจากยังไม่เปิด autoApply';
+        } else {
+          resultMessage = 'แจ้งเตือนเท่านั้น ไม่มีการเปลี่ยนแปลงบน Meta';
+        }
+      } catch (error) {
+        status = ActionStatus.FAILED;
+        resultMessage = error instanceof Error ? error.message : 'ดำเนินการไม่สำเร็จ';
       }
+
+      await prisma.action.update({ where: { id: action.id }, data: { status, resultMessage } });
+      await prisma.notificationLog.create({
+        data: {
+          organizationId,
+          channel: 'SYSTEM',
+          recipient: 'RULE_ENGINE',
+          payloadJson: { ruleId: rule.id, actionId: action.id, adsetId, summary },
+          status
+        }
+      });
+      await createAuditLog({
+        organizationId,
+        actorType: 'SYSTEM',
+        actorLabel: 'rules-worker',
+        eventType: 'RULE_ACTION_CREATED',
+        entityType: 'ACTION',
+        entityId: action.id,
+        details: { ruleId: rule.id, adsetId, status, resultMessage }
+      });
+
+      createdActionIds.push(action.id);
     }
   }
 
-  if (actions.length) await prisma.action.createMany({ data: actions, skipDuplicates: true });
-  return prisma.action.findMany({ where: { idempotencyKey: { in: actions.map((a) => a.idempotencyKey) } }, include: { rule: true } });
+  return prisma.action.findMany({ where: { id: { in: createdActionIds } }, include: { rule: true } });
 }

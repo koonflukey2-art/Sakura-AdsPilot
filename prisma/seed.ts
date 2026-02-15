@@ -62,19 +62,28 @@ async function main() {
       name: 'ควบคุมงบตาม CPA',
       description: 'หาก CPA สูงเกินเพดานและคอนเวอร์ชันถึงขั้นต่ำ ให้ลดงบ',
       type: RuleType.CPA_BUDGET_REDUCTION,
-      configJson: { cpaCeiling: 50, minConversions: 20, reduceByPercent: 15 }
+      configJson: { cpaCeiling: 50, minConversions: 20, reducePercent: 15 },
+      scopeType: RuleScopeType.ACCOUNT,
+      scopeIds: [],
+      applyToAll: true
     },
     {
       name: 'หยุดแอดเซ็ตเมื่อ ROAS ต่ำ',
       description: 'หาก ROAS ต่ำต่อเนื่องและมีแนวโน้มแย่ลง ให้หยุดแอดเซ็ต',
       type: RuleType.ROAS_PAUSE_ADSET,
-      configJson: { roasTarget: 1.8, consecutiveDays: 3 }
+      configJson: { roasFloor: 1.8, minSpend: 300 },
+      scopeType: RuleScopeType.ACCOUNT,
+      scopeIds: [],
+      applyToAll: true
     },
     {
       name: 'แจ้งเตือนครีเอทีฟล้า',
       description: 'แจ้งเตือนเมื่อ CTR ลดลงและ Frequency สูง',
       type: RuleType.CTR_FATIGUE_ALERT,
-      configJson: { ctrDropPercent: 20, minFrequency: 2.4 }
+      configJson: { ctrDropPercent: 20, minFrequency: 2.4 },
+      scopeType: RuleScopeType.ACCOUNT,
+      scopeIds: [],
+      applyToAll: true
     }
   ];
 

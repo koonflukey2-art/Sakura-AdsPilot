@@ -17,10 +17,12 @@ export async function GET() {
   });
 
   return NextResponse.json({
-    metaAdAccountId: conn?.metaAdAccountId ?? '',
+    adAccountId: conn?.adAccountId ?? '',
     tokenMasked: conn ? maskSecret('encrypted-token') : '',
     tokenExpiresAt: conn?.tokenExpiresAt ?? null,
-    isActive: conn?.isActive ?? false
+    status: conn?.status ?? 'DISCONNECTED',
+    testedAt: conn?.testedAt ?? null,
+    connected: conn?.status === 'CONNECTED'
   });
 }
 
@@ -37,10 +39,11 @@ export async function PUT(req: Request) {
     data: {
       organizationId: auth.session.user.organizationId,
       userId: auth.session.user.id,
-      metaAdAccountId: parsed.data.metaAdAccountId,
+      adAccountId: parsed.data.adAccountId,
       accessTokenEnc: encrypt(parsed.data.accessToken),
       tokenExpiresAt: parsed.data.tokenExpiresAt ? new Date(parsed.data.tokenExpiresAt) : null,
-      isActive: parsed.data.isActive
+      status: parsed.data.status,
+      testedAt: new Date()
     }
   });
 
@@ -51,7 +54,7 @@ export async function PUT(req: Request) {
     eventType: 'META_CONNECTION_UPDATED',
     entityType: 'META_CONNECTION',
     entityId: conn.id,
-    details: { metaAdAccountId: conn.metaAdAccountId, isActive: conn.isActive }
+    details: { adAccountId: conn.adAccountId, status: conn.status }
   });
 
   return NextResponse.json({ success: true, tokenMasked: maskSecret(parsed.data.accessToken) });

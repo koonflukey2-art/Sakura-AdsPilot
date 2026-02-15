@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 
 export default function SettingsClientPage() {
   const [notif, setNotif] = useState<any>({ emailEnabled: false, smtpPort: 587, lineEnabled: false });
-  const [meta, setMeta] = useState<any>({ metaAdAccountId: '', accessToken: '' });
+  const [meta, setMeta] = useState<any>({ adAccountId: '', accessToken: '', status: 'CONNECTED' });
   const [message, setMessage] = useState('');
 
   const load = async () => {
@@ -60,13 +60,13 @@ export default function SettingsClientPage() {
       <Card className="space-y-3 p-5">
         <h3 className="font-medium">เชื่อมต่อ Meta/Facebook</h3>
         <label className="text-sm">รหัสบัญชีโฆษณา</label>
-        <input className="w-full rounded-xl border border-border bg-background px-3 py-2" value={meta.metaAdAccountId || ''} onChange={(e) => setMeta((v: any) => ({ ...v, metaAdAccountId: e.target.value }))} />
+        <input className="w-full rounded-xl border border-border bg-background px-3 py-2" value={meta.adAccountId || ''} onChange={(e) => setMeta((v: any) => ({ ...v, adAccountId: e.target.value }))} />
         <label className="text-sm flex items-center gap-2"><Lock size={14} /> Access Token (ข้อมูลลับ)</label>
         <input type="password" className="w-full rounded-xl border border-border bg-background px-3 py-2" value={meta.accessToken || ''} onChange={(e) => setMeta((v: any) => ({ ...v, accessToken: e.target.value }))} />
         <div className="flex gap-2">
           <Button onClick={saveMeta}>บันทึก</Button>
           <Button variant="secondary" onClick={async () => { const r = await fetch('/api/meta/test'); const d = await r.json(); setMessage(r.ok ? d.message : d.error || 'ทดสอบไม่สำเร็จ'); }}>ทดสอบการเชื่อมต่อ</Button>
-          <Button variant="ghost" onClick={() => setMeta({ metaAdAccountId: '', accessToken: '' })}>ล้างค่า</Button>
+          <Button variant="ghost" onClick={() => setMeta({ adAccountId: '', accessToken: '', status: 'CONNECTED' })}>ล้างค่า</Button>
         </div>
       </Card>
     </div>

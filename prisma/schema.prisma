@@ -18,6 +18,18 @@ enum RuleType {
   CTR_FATIGUE_ALERT
 }
 
+enum RuleScopeType {
+  ACCOUNT
+  CAMPAIGN
+  ADSET
+}
+
+enum MetaConnectionStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+}
+
 enum ActionType {
   REDUCE_BUDGET
   PAUSE_ADSET
@@ -69,15 +81,16 @@ model MetaConnection {
   id              String       @id @default(cuid())
   organizationId  String
   userId          String
-  metaAdAccountId String
+  adAccountId     String
   accessTokenEnc  String
   tokenExpiresAt  DateTime?
-  isActive        Boolean      @default(true)
+  status          MetaConnectionStatus @default(DISCONNECTED)
+  testedAt        DateTime?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
-  @@index([organizationId, metaAdAccountId])
+  @@index([organizationId, adAccountId])
 }
 
 model Metric {
@@ -109,6 +122,9 @@ model Rule {
   isEnabled             Boolean      @default(true)
   autoApply             Boolean      @default(false)
   configJson            Json
+  scopeType             RuleScopeType @default(ACCOUNT)
+  scopeIds              String[]      @default([])
+  applyToAll            Boolean       @default(true)
   maxBudgetChangePerDay Int          @default(20)
   cooldownHours         Int          @default(24)
   createdById           String
