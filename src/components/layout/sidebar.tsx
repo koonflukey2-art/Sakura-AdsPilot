@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BarChart3, Settings, ListChecks, ScrollText, Users } from 'lucide-react';
+import { BarChart3, Settings, ListChecks, ScrollText, Users, BrainCircuit, UsersRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type SidebarProps = { role: 'ADMIN' | 'EMPLOYEE' };
@@ -12,6 +12,8 @@ export function Sidebar({ role }: SidebarProps) {
   const items = [
     { href: '/dashboard', label: 'แดชบอร์ด', icon: BarChart3 },
     { href: '/rules', label: 'กฎอัตโนมัติ', icon: ListChecks },
+    { href: '/customers', label: 'ลูกค้า CRM', icon: UsersRound },
+    { href: '/ai', label: 'AI Suggestions', icon: BrainCircuit },
     { href: '/logs', label: 'บันทึกกิจกรรม', icon: ScrollText },
     ...(role === 'ADMIN' ? [{ href: '/users', label: 'จัดการผู้ใช้', icon: Users }] : []),
     { href: '/settings', label: 'ตั้งค่า', icon: Settings }
