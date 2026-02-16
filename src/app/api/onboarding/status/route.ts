@@ -12,6 +12,10 @@ export async function GET() {
 
   const [meta, rulesCount, actionsCount, logsCount, campaignScopedRulesCount] = await Promise.all([
     prisma.metaConnection.findFirst({ where: { organizationId }, orderBy: { updatedAt: 'desc' } }),
+    prisma.metaConnection.findFirst({
+      where: { organizationId },
+      orderBy: { updatedAt: 'desc' }
+    }),
     prisma.rule.count({ where: { organizationId } }),
     prisma.action.count({ where: { organizationId } }),
     prisma.auditLog.count({ where: { organizationId } }),
@@ -27,10 +31,11 @@ export async function GET() {
   const now = new Date();
   const testedThreshold = new Date(now.getTime() - TESTED_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
-  const connected =
-    meta?.status === 'CONNECTED' &&
-    Boolean(meta.accessTokenEnc?.trim()) &&
-    (!meta.tokenExpiresAt || meta.tokenExpiresAt > now);
+  const tokenOk =
+    Boolean(meta?.accessTokenEnc?.trim()) &&
+    (!meta?.tokenExpiresAt || meta.tokenExpiresAt > now);
+
+  const connected = meta?.status === 'CONNECTED' && tokenOk;
 
   const tested = Boolean(meta?.testedAt && meta.testedAt > testedThreshold);
 
