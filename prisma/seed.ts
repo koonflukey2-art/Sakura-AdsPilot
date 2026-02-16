@@ -1,4 +1,4 @@
-import { PrismaClient, Role, RuleType } from '@prisma/client';
+import { PrismaClient, Role, RuleScopeType, RuleType } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { DEFAULT_ORGANIZATION_NAME } from '../src/lib/constants';
 

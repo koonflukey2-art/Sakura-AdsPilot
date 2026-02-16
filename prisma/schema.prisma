@@ -43,6 +43,32 @@ enum ActionStatus {
   SKIPPED
 }
 
+enum Platform {
+  META
+  TIKTOK
+  SHOPEE
+}
+
+enum PlatformConnectionStatus {
+  CONNECTED
+  DISCONNECTED
+  ERROR
+}
+
+enum CustomerEventType {
+  IDENTIFIED
+  PAGE_VIEW
+  MESSAGE
+  ORDER
+  CUSTOM
+}
+
+enum AiSuggestionStatus {
+  PENDING
+  APPLIED
+  DISMISSED
+}
+
 model Organization {
   id                  String                @id @default(cuid())
   name                String                @unique
@@ -56,6 +82,11 @@ model Organization {
   notificationSetting NotificationSetting?
   notificationLogs    NotificationLog[]
   metaConnections     MetaConnection[]
+  platformConnections PlatformConnection[]
+  customers           Customer[]
+  customerEvents      CustomerEvent[]
+  customerOrders      CustomerOrder[]
+  aiSuggestions       AiSuggestion[]
   workerLocks         WorkerLock[]
 }
 
@@ -218,4 +249,100 @@ model WorkerLock {
 
   @@unique([organizationId, lockKey])
   @@index([organizationId, lockedUntil])
+}
+
+model PlatformConnection {
+  id             String                   @id @default(cuid())
+  organizationId String
+  userId         String
+  platform       Platform
+  accountRef     String?
+  accessTokenEnc String?
+  tokenExpiresAt DateTime?
+  status         PlatformConnectionStatus @default(DISCONNECTED)
+  testedAt       DateTime?
+  metadataJson   Json?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  organization   Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, platform, updatedAt])
+}
+
+model Customer {
+  id             String             @id @default(cuid())
+  organizationId String
+  displayName    String?
+  firstSeenAt    DateTime           @default(now())
+  lastSeenAt     DateTime           @default(now())
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  identities     CustomerIdentity[]
+  events         CustomerEvent[]
+  orders         CustomerOrder[]
+
+  @@index([organizationId, lastSeenAt])
+}
+
+model CustomerIdentity {
+  id         String    @id @default(cuid())
+  customerId String
+  provider   String
+  value      String
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, value])
+  @@index([customerId, provider])
+}
+
+model CustomerEvent {
+  id             String            @id @default(cuid())
+  organizationId String
+  customerId     String
+  eventType      CustomerEventType @default(CUSTOM)
+  payloadJson    Json              @default("{}")
+  occurredAt     DateTime          @default(now())
+  createdAt      DateTime          @default(now())
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer       Customer          @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, occurredAt])
+  @@index([customerId, occurredAt])
+}
+
+model CustomerOrder {
+  id             String       @id @default(cuid())
+  organizationId String
+  customerId     String
+  externalRef    String?
+  amount         Decimal?     @db.Decimal(12, 2)
+  currency       String?
+  orderedAt      DateTime?
+  payloadJson    Json         @default("{}")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer       Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, orderedAt])
+  @@index([customerId, orderedAt])
+}
+
+model AiSuggestion {
+  id             String             @id @default(cuid())
+  organizationId String
+  title          String
+  summary        String
+  payloadJson    Json               @default("{}")
+  status         AiSuggestionStatus @default(PENDING)
+  createdBy      String?
+  appliedAt      DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status, createdAt])
 }
