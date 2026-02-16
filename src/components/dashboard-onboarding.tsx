@@ -16,6 +16,7 @@ type DashboardStatus = {
   progress: { done: number; total: number };
 };
 
+<<<<<<< HEAD
 const fallbackStatus: DashboardStatus = {
   meta: { state: 'DISCONNECTED', lastCheckedAt: null, details: 'ยังไม่ทราบสถานะ' },
   rules: { configured: false, count: 0 },
@@ -50,6 +51,28 @@ function StatusChip({ label, value, className }: { label: string; value: string;
       <span className="text-foreground/60">{label}</span>
       <span className={`rounded-full px-2 py-0.5 font-medium ${className || 'bg-muted text-foreground/70'}`}>{value}</span>
     </div>
+=======
+const defaultStatus: Status = {
+  connected: false,
+  tested: false,
+  campaignPicked: false,
+  hasRule: false,
+  hasRun: false,
+  hasLogs: false
+};
+
+type Item = { key: keyof Status; label: string; hint: string; href: string };
+
+function Dot({ done }: { done: boolean }) {
+  return (
+    <span
+      className={[
+        'h-3 w-3 rounded-full border',
+        done ? 'border-emerald-400 bg-emerald-400 shadow-[0_0_0_4px_rgba(16,185,129,0.15)]' : 'border-border bg-transparent'
+      ].join(' ')}
+      aria-label={done ? 'เสร็จแล้ว' : 'ยังไม่เสร็จ'}
+    />
+>>>>>>> 85fffad1 (Update dashboard/logs/rules UI + onboarding + validations)
   );
 }
 
@@ -75,6 +98,7 @@ export function DashboardOnboarding() {
       .finally(() => setIsLoading(false));
   }, []);
 
+<<<<<<< HEAD
   const completionPercent = Math.min(100, Math.round((status.progress.done / Math.max(status.progress.total, 1)) * 100));
   const metaBadge = metaStateBadge(status.meta.state);
   const runBadge = runStatusBadge(status.run.lastRunStatus);
@@ -118,6 +142,82 @@ export function DashboardOnboarding() {
             {errorMessage || 'ข้อมูลนี้อัปเดตจากสถานะจริงในระบบ'}
           </div>
         </details>
+=======
+  const items: Item[] = useMemo(
+    () => [
+      { key: 'connected', label: 'เชื่อมต่อ Meta', hint: 'ใส่ Ad Account + Token', href: '/settings' },
+      { key: 'tested', label: 'ทดสอบการเชื่อมต่อ', hint: 'กด Test ให้ผ่าน', href: '/settings' },
+      { key: 'campaignPicked', label: 'เลือกแคมเปญ/แอดเซ็ต', hint: 'กำหนดเป้าหมายที่จะควบคุม', href: '/rules' },
+      { key: 'hasRule', label: 'สร้างกฎอย่างน้อย 1 ข้อ', hint: 'ตั้งกฎให้อ่านง่าย', href: '/rules' },
+      { key: 'hasRun', label: 'ลองรันกฎ', hint: 'Dry-run/Run now', href: '/rules' },
+      { key: 'hasLogs', label: 'ดูบันทึกกิจกรรม', hint: 'ตรวจผลการทำงาน', href: '/logs' }
+    ],
+    []
+  );
+
+  const doneCount = items.reduce((acc, it) => acc + (status[it.key] ? 1 : 0), 0);
+  const nextItem = items.find((it) => !status[it.key]) ?? items[items.length - 1];
+
+  return (
+    <Card className="space-y-3 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold">เช็คลิสต์เริ่มใช้งาน</p>
+          <p className="text-xs text-foreground/60">
+            ทำแล้ว {doneCount}/{items.length} • เหลือ {Math.max(items.length - doneCount, 0)} ขั้นตอน
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {items.map((it) => (
+            <Dot key={it.key} done={Boolean(status[it.key])} />
+          ))}
+        </div>
+      </div>
+
+      {/* “ขั้นตอนถัดไป” แบบย่อ ไม่กินพื้นที่ */}
+      {nextItem && (
+        <Link
+          href={nextItem.href}
+          className="group block rounded-xl border border-border bg-muted/30 p-3 transition hover:bg-muted/50"
+        >
+          <div className="flex items-center gap-3">
+            <Dot done={Boolean(status[nextItem.key])} />
+            <div className="min-w-0">
+              <p className="text-sm font-medium leading-snug truncate">{nextItem.label}</p>
+              <p className="text-xs text-foreground/60 truncate">{nextItem.hint} • คลิกเพื่อไปหน้า {nextItem.href}</p>
+            </div>
+            <span className="ml-auto rounded-lg border border-border bg-background px-2 py-1 text-xs text-foreground/70 group-hover:text-foreground">
+              ไปหน้า
+            </span>
+          </div>
+        </Link>
+      )}
+
+      {/* รายการทั้งหมดแบบ “คลิกทั้งแถวได้” */}
+      <div className="space-y-2">
+        {items.map((it) => {
+          const done = Boolean(status[it.key]);
+          return (
+            <Link
+              key={it.key}
+              href={it.href}
+              className={[
+                'block rounded-xl border p-3 transition',
+                done ? 'border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10' : 'border-border bg-background hover:bg-muted/40'
+              ].join(' ')}
+            >
+              <div className="flex items-center gap-3">
+                <Dot done={done} />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium leading-snug truncate">{it.label}</p>
+                  <p className="text-xs text-foreground/60 truncate">{done ? 'เสร็จแล้ว' : 'ยังไม่เสร็จ'} • {it.hint}</p>
+                </div>
+                <span className="ml-auto text-xs text-foreground/60">ไปหน้า</span>
+              </div>
+            </Link>
+          );
+        })}
+>>>>>>> 85fffad1 (Update dashboard/logs/rules UI + onboarding + validations)
       </div>
 
       <div className="flex flex-wrap gap-2">

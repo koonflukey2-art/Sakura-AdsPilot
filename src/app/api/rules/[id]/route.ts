@@ -1,16 +1,23 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { ruleSchema } from '@/lib/validations';
+import { ruleUpdateSchema } from '@/lib/validations';
 import { canManageRules } from '@/lib/rbac';
 import { requireSession, forbidden } from '@/lib/server-auth';
 import { createAuditLog } from '@/lib/audit';
+
+function jsonError(message: unknown, status = 400) {
+  return NextResponse.json({ error: message }, { status });
+}
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
   const auth = await requireSession();
   if (auth.error) return auth.error;
 
-  const rule = await prisma.rule.findFirst({ where: { id: params.id, organizationId: auth.session.user.organizationId } });
-  if (!rule) return NextResponse.json({ error: 'ไม่พบกฎที่ต้องการ' }, { status: 404 });
+  const rule = await prisma.rule.findFirst({
+    where: { id: params.id, organizationId: auth.session.user.organizationId }
+  });
+
+  if (!rule) return jsonError('ไม่พบกฎที่ต้องการ', 404);
   return NextResponse.json(rule);
 }
 
@@ -19,16 +26,31 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (auth.error) return auth.error;
   if (!canManageRules(auth.session.user.role)) return forbidden();
 
-  const body = await req.json();
-  const parsed = ruleSchema.partial().safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  const body = await req.json().catch(() => null);
+  if (!body || typeof body !== 'object') return jsonError('ข้อมูลไม่ถูกต้อง');
 
+  const parsed = ruleUpdateSchema.safeParse(body);
+  if (!parsed.success) return jsonError(parsed.error.flatten(), 400);
+
+  // EMPLOYEE ไม่ให้เปิดยิงจริงอัตโนมัติ
   if (auth.session.user.role === 'EMPLOYEE' && parsed.data.autoApply === true) {
-    return NextResponse.json({ error: 'พนักงานไม่สามารถเปิดยิงจริงอัตโนมัติได้' }, { status: 403 });
+    return jsonError('พนักงานไม่สามารถเปิดยิงจริงอัตโนมัติได้', 403);
   }
 
-  const current = await prisma.rule.findFirst({ where: { id: params.id, organizationId: auth.session.user.organizationId } });
-  if (!current) return NextResponse.json({ error: 'ไม่พบกฎที่ต้องการ' }, { status: 404 });
+  const current = await prisma.rule.findFirst({
+    where: { id: params.id, organizationId: auth.session.user.organizationId }
+  });
+  if (!current) return jsonError('ไม่พบกฎที่ต้องการ', 404);
+
+  // ✅ Guard เพิ่มเติม: ถ้ามีการส่ง scopeType และ applyToAll=false แล้ว scopeIds ว่าง -> ไม่ผ่าน
+  if (
+    (parsed.data.scopeType === 'CAMPAIGN' || parsed.data.scopeType === 'ADSET') &&
+    parsed.data.applyToAll === false &&
+    Array.isArray(parsed.data.scopeIds) &&
+    parsed.data.scopeIds.length === 0
+  ) {
+    return jsonError({ formErrors: ['กรุณาเลือกเป้าหมายอย่างน้อย 1 รายการ'] }, 400);
+  }
 
   const updated = await prisma.rule.update({
     where: { id: current.id },
@@ -64,8 +86,11 @@ export async function DELETE(_: Request, { params }: { params: { id: string } })
   if (auth.error) return auth.error;
   if (!canManageRules(auth.session.user.role)) return forbidden();
 
-  const deleted = await prisma.rule.deleteMany({ where: { id: params.id, organizationId: auth.session.user.organizationId } });
-  if (!deleted.count) return NextResponse.json({ error: 'ไม่พบกฎที่ต้องการ' }, { status: 404 });
+  const deleted = await prisma.rule.deleteMany({
+    where: { id: params.id, organizationId: auth.session.user.organizationId }
+  });
+
+  if (!deleted.count) return jsonError('ไม่พบกฎที่ต้องการ', 404);
 
   await createAuditLog({
     organizationId: auth.session.user.organizationId,

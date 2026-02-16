@@ -43,7 +43,14 @@ export const notificationsSchema = z.object({
   lineToken: z.string().optional()
 });
 
-export const ruleSchema = z.object({
+/**
+ * ✅ สำคัญ:
+ * - ruleSchema เดิมมี .superRefine() ทำให้กลายเป็น ZodEffects -> เรียก .partial() ไม่ได้
+ * - วิธีแก้: แยกเป็น ruleBaseSchema (ZodObject) แล้วค่อย export:
+ *   - ruleSchema = ruleBaseSchema.superRefine(...)
+ *   - ruleUpdateSchema = ruleBaseSchema.partial()
+ */
+export const ruleBaseSchema = z.object({
   name: requiredText('ชื่อกฎ', 3),
   description: requiredText('คำอธิบาย', 5),
   type: z.enum(['CPA_BUDGET_REDUCTION', 'ROAS_PAUSE_ADSET', 'CTR_FATIGUE_ALERT']),
@@ -55,7 +62,9 @@ export const ruleSchema = z.object({
   scopeType: z.enum(['ACCOUNT', 'CAMPAIGN', 'ADSET']).default('ACCOUNT'),
   scopeIds: z.array(z.string().min(1, 'รหัสเป้าหมายไม่ถูกต้อง')).default([]),
   applyToAll: z.boolean().default(true)
-}).superRefine((data, ctx) => {
+});
+
+export const ruleSchema = ruleBaseSchema.superRefine((data, ctx) => {
   const configSchemaByType = {
     CPA_BUDGET_REDUCTION: z.object({
       cpaCeiling: z.number({ required_error: 'กรุณากรอกเพดาน CPA' }).min(0.01, 'เพดาน CPA ต้องมากกว่า 0'),
@@ -80,18 +89,17 @@ export const ruleSchema = z.object({
     return;
   }
 
-  if (!hasType || !hasConfig) return;
-
-  const parsedConfig = configSchemaByType[data.type].safeParse(data.configJson);
-
-
-  if ((data.scopeType === 'CAMPAIGN' || data.scopeType === 'ADSET') && !data.applyToAll && data.scopeIds.length === 0) {
+  if ((data.scopeType === 'CAMPAIGN' || data.scopeType === 'ADSET') && !data.applyToAll && (data.scopeIds?.length ?? 0) === 0) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['scopeIds'],
       message: 'กรุณาเลือกเป้าหมายอย่างน้อย 1 รายการ'
     });
   }
+
+  if (!hasType || !hasConfig) return;
+
+  const parsedConfig = configSchemaByType[data.type].safeParse(data.configJson);
   if (!parsedConfig.success) {
     for (const issue of parsedConfig.error.issues) {
       ctx.addIssue({
@@ -102,6 +110,13 @@ export const ruleSchema = z.object({
     }
   }
 });
+
+/**
+ * ✅ PATCH ใช้ตัวนี้: อัปเดตแค่บางฟิลด์ได้
+ * - ไม่บังคับทุก field
+ * - ถ้าส่ง type + configJson มา จะตรวจ (แบบเบา ๆ) ใน route.ts อีกที (เพื่อไม่ซับซ้อนเกิน)
+ */
+export const ruleUpdateSchema = ruleBaseSchema.partial();
 
 export const userUpdateSchema = z.object({
   role: z.enum(['ADMIN', 'EMPLOYEE']).optional(),
