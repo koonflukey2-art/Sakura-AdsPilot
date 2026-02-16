@@ -212,7 +212,7 @@ export default function RulesPage() {
 
   const loadConnection = async () => {
     try {
-      const res = await fetch('/api/settings/meta-connection', { cache: 'no-store' });
+      const res = await fetch('/api/onboarding/status', { cache: 'no-store' });
       const data = await res.json();
       setConnected(Boolean(data?.connected));
     } catch {
